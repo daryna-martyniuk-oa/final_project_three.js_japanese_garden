@@ -12,11 +12,6 @@ import {
   POND_BOUNDS
 } from './terrain.js';
 
-const sakuraModelUrl = './sakura.glb';
-const bambooOneUrl = './bamboo1.glb';
-const bambooTwoUrl = './bamboo2.glb';
-const ashTreeUrl = './japanese_ash_tree.glb';
-
 const textureLoader = new THREE.TextureLoader();
 const woodTexture = textureLoader.load(
   './grey_lati_veneer_diff_1k.jpg',
@@ -933,13 +928,13 @@ function loadBambooModels(scene, onModelError, rockPositions) {
   const ashCount = 8;
   for (let i = 0; i < ashCount; i += 1) {
     const angle = (i / ashCount) * Math.PI * 2;
-    if (!addPlant(ashTreeUrl, 'ash', angle, 2.6, [14.1, 15.7])) {
+    if (!addPlant('./japanese_ash_tree.glb', 'ash', angle, 2.6, [14.1, 15.7])) {
       console.warn(`Unable to place perimeter Japanese ash tree ${i + 1} of ${ashCount}.`);
     }
   }
   const bambooCount = 60;
   for (let i = 0; i < bambooCount; i += 1) {
-    const url = i % 2 === 0 ? bambooOneUrl : bambooTwoUrl;
+    const url = i % 2 === 0 ? './bamboo1.glb' : './bamboo2.glb';
     const angle = (i / bambooCount) * Math.PI * 2 + randomRange(-0.08, 0.08);
     if (!addPlant(url, 'bamboo', angle, 0.82, [14.1, 15.7])) {
       console.warn(`Unable to place perimeter bamboo ${i + 1} of ${bambooCount}.`);
@@ -967,7 +962,13 @@ function loadBambooModels(scene, onModelError, rockPositions) {
   const interiorBambooCount = 28;
   for (let i = 0; i < interiorBambooCount; i += 1) {
     const angle = (i / interiorBambooCount) * Math.PI * 2 + randomRange(-0.2, 0.2);
-    if (!addPlant(i % 2 === 0 ? bambooOneUrl : bambooTwoUrl, 'bamboo', angle, 1.25, [7.1, 14.8])) {
+    if (!addPlant(
+      i % 2 === 0 ? './bamboo1.glb' : './bamboo2.glb',
+      'bamboo',
+      angle,
+      1.25,
+      [7.1, 14.8]
+    )) {
       console.warn(`Unable to place interior bamboo cluster ${i + 1} of ${interiorBambooCount}.`);
     }
   }

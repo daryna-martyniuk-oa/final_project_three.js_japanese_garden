@@ -75,8 +75,8 @@ scene.add(sun, sun.target);
 
 const waterMaterial = createWaterMaterial();
 const garden = createZenGarden(scene, waterMaterial, (error) => {
-  console.error('Unable to load the Sakura tree model from assets/sakura.glb:', error);
-  loading.textContent = 'Sakura model unavailable — check assets/sakura.glb';
+  console.error('Unable to load Sakura tree model from ./sakura.glb:', error);
+  loading.textContent = 'Sakura model unavailable — check ./sakura.glb';
 });
 
 const settings = {
