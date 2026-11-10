@@ -30,9 +30,31 @@ controls.target.set(0, 1.5, 0);
 controls.enableDamping = true;
 controls.dampingFactor = 0.06;
 controls.maxPolarAngle = Math.PI * 0.42;
-controls.maxDistance = 16.5;
+controls.maxDistance = 14.5;
 controls.minDistance = 3.5;
 controls.update();
+
+function constrainGardenCamera() {
+  const maxTargetRadius = 7.5;
+  const targetRadius = Math.hypot(controls.target.x, controls.target.z);
+  if (targetRadius > maxTargetRadius) {
+    const scale = maxTargetRadius / targetRadius;
+    controls.target.x *= scale;
+    controls.target.z *= scale;
+  }
+  controls.target.y = THREE.MathUtils.clamp(controls.target.y, 0.35, 5);
+
+  const maxCameraRadius = 14.7;
+  const cameraRadius = Math.hypot(camera.position.x, camera.position.z);
+  if (cameraRadius > maxCameraRadius) {
+    const scale = maxCameraRadius / cameraRadius;
+    camera.position.x *= scale;
+    camera.position.z *= scale;
+  }
+  camera.position.y = Math.max(camera.position.y, 0.4);
+  camera.lookAt(controls.target);
+}
+constrainGardenCamera();
 
 scene.add(new THREE.HemisphereLight('#ffd1a4', '#1a2a3a', 1.28));
 scene.add(new THREE.AmbientLight('#fff0dd', 0.22));
@@ -80,7 +102,8 @@ const gui = new GUI({ title: 'Garden atmosphere' });
 gui.add(settings, 'timeOfDay', 0, 1, 0.01).name('Time of day').onChange(updateSun);
 gui.add(settings, 'sunIntensity', 0.2, 5, 0.05).name('Sun intensity').onChange(updateSun);
 gui.add(settings, 'windSpeed', 0, 3, 0.05).name('Wind speed');
-gui.add(settings, 'petalDensity', 80, garden.maxPetals, 1).name('Petal density');
+gui.add(settings, 'petalDensity', 0, garden.maxPetals, 1).name('Petal density');
+gui.add({ clearPetals: () => garden.clearPetals() }, 'clearPetals').name('Clear Petals');
 
 const timer = new THREE.Timer();
 timer.connect(document);
@@ -103,9 +126,13 @@ renderer.domElement.addEventListener('pointerup', (event) => {
   pointer.y = -((event.clientY - bounds.top) / bounds.height) * 2 + 1;
   raycaster.setFromCamera(pointer, camera);
   const intersections = raycaster.intersectObjects(scene.children, true);
-  const hit = intersections[0];
+  const hit = intersections.find((intersection) => intersection.object === garden.water);
   if (!hit) return;
-  if (hit.object === garden.water && hit.uv) garden.setRipple(hit.uv.x, hit.uv.y, elapsedTime);
+  const waterPoint = garden.water.worldToLocal(hit.point.clone());
+  const x = garden.water.position.x + waterPoint.x;
+  const z = garden.water.position.z - waterPoint.y;
+  garden.setRipple(x, z, elapsedTime, 1);
+  garden.disperseFloatingPetals(x, z);
 });
 renderer.domElement.addEventListener('pointercancel', () => { pointerStart = null; });
 
@@ -124,6 +151,7 @@ function animate() {
   const elapsed = timer.getElapsed();
   elapsedTime = elapsed;
   controls.update();
+  constrainGardenCamera();
   garden.update(elapsed, delta, settings.windSpeed, settings.petalDensity);
   renderer.render(scene, camera);
 }

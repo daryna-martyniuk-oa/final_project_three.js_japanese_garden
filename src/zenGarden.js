@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { Reflector } from 'three/addons/objects/Reflector.js';
 import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
+import { triggerWaterRipple } from './waterShader.js';
 import sakuraModelUrl from '../assets/sakura.glb?url';
 import bambooOneUrl from '../assets/bamboo1.glb?url';
 import bambooTwoUrl from '../assets/bamboo2.glb?url';
@@ -33,9 +34,9 @@ woodTexture.anisotropy = 8;
 const materials = {
   soil: new THREE.MeshStandardMaterial({ color: '#8fdf4d', vertexColors: true, roughness: 1 }),
   path: [
-    new THREE.MeshStandardMaterial({ color: '#aaa69c', roughness: 0.96 }),
-    new THREE.MeshStandardMaterial({ color: '#c2b9a7', roughness: 0.94 }),
-    new THREE.MeshStandardMaterial({ color: '#918f89', roughness: 1 })
+    new THREE.MeshStandardMaterial({ color: '#aaa69c', roughness: 0.86 }),
+    new THREE.MeshStandardMaterial({ color: '#c2b9a7', roughness: 0.84 }),
+    new THREE.MeshStandardMaterial({ color: '#918f89', roughness: 0.9 })
   ],
   wood: createWoodMaterial('#684838', 0.76),
   woodLight: createWoodMaterial('#98704d', 0.8),
@@ -81,6 +82,12 @@ const materials = {
 
 const randomRange = (min, max) => min + Math.random() * (max - min);
 const MAX_GARDEN_SCENERY_RADIUS = 16;
+const BRIDGE_SPAN = 11.6;
+const BRIDGE_CENTER_Z = 2.15;
+const BRIDGE_HALF_WIDTH = 0.825;
+const PETAL_FALLING = 0;
+const PETAL_FLOATING = 2;
+const PETAL_INACTIVE = 3;
 
 function createWoodMaterial(color, roughness) {
   const material = new THREE.MeshStandardMaterial({ color, roughness, map: woodTexture });
@@ -188,16 +195,25 @@ function createTerrain(scene) {
   pondBed.receiveShadow = true;
 
   const shoreMaterial = new THREE.MeshStandardMaterial({ color: '#737b57', roughness: 1 });
-  const rimY = getTerrainHeight(0, 2.15) - 0.035;
-  const rimPositions = [
-    { x: 0, z: POND_BOUNDS.near - 0.1, sx: 10.3, sz: 0.2 },
-    { x: 0, z: POND_BOUNDS.far + 0.1, sx: 10.3, sz: 0.2 },
-    { x: POND_BOUNDS.left - 0.1, z: 2.15, sx: 0.2, sz: 6.2 },
-    { x: POND_BOUNDS.right + 0.1, z: 2.15, sx: 0.2, sz: 6.2 }
-  ];
-  for (const rim of rimPositions) {
-    addMesh(scene, new THREE.BoxGeometry(rim.sx, 0.14, rim.sz), shoreMaterial, [rim.x, rimY, rim.z]);
-  }
+  const rimSegments = 24;
+  const rimHeight = 0.08;
+  const addShoreEdge = (horizontal, fixed, start, end) => {
+    const segmentLength = (end - start) / rimSegments;
+    for (let i = 0; i < rimSegments; i += 1) {
+      const along = start + (i + 0.5) * segmentLength;
+      const x = horizontal ? along : fixed;
+      const z = horizontal ? fixed : along;
+      const groundY = getTerrainHeight(x, z);
+      const geometry = horizontal
+        ? new THREE.BoxGeometry(segmentLength + 0.012, rimHeight, 0.2)
+        : new THREE.BoxGeometry(0.2, rimHeight, segmentLength + 0.012);
+      addMesh(scene, geometry, shoreMaterial, [x, groundY - 0.02, z]);
+    }
+  };
+  addShoreEdge(true, POND_BOUNDS.near - 0.1, POND_BOUNDS.left, POND_BOUNDS.right);
+  addShoreEdge(true, POND_BOUNDS.far + 0.1, POND_BOUNDS.left, POND_BOUNDS.right);
+  addShoreEdge(false, POND_BOUNDS.left - 0.1, POND_BOUNDS.near, POND_BOUNDS.far);
+  addShoreEdge(false, POND_BOUNDS.right + 0.1, POND_BOUNDS.near, POND_BOUNDS.far);
 
   return { ground, pondBed, terrainGrid };
 }
@@ -215,20 +231,51 @@ function createPath(scene) {
       new THREE.Vector3(9.2, 0, 5.3)
     ]
   ];
+  const steppingStones = [];
   for (const points of paths) {
     const curve = new THREE.CatmullRomCurve3(points);
-    for (let i = 0; i < 22; i += 1) {
-      const point = curve.getPoint(i / 21);
+    const stoneCount = 6;
+    for (let i = 0; i < stoneCount; i += 1) {
+      const t = i / (stoneCount - 1);
+      const point = curve.getPoint(THREE.MathUtils.clamp(t + randomRange(-0.018, 0.018), 0, 1));
       if (isOverPond(point.x, point.z)) continue;
-      const tangent = curve.getTangent(i / 21);
-      const width = randomRange(0.62, 0.86);
-      const depth = randomRange(0.34, 0.52);
-      addMesh(scene, roundedStoneGeometry(width, depth, 0.12), materials.path[Math.floor(Math.random() * materials.path.length)], [
-        point.x, getTerrainHeight(point.x, point.z) + 0.015, point.z
+      const tangent = curve.getTangent(t);
+      const radius = randomRange(0.4, 0.53);
+      const height = randomRange(0.1, 0.15);
+      const scaleX = randomRange(0.9, 1.2);
+      const scaleZ = randomRange(0.85, 1.18);
+      const stoneX = point.x + randomRange(-0.06, 0.06);
+      const stoneZ = point.z + randomRange(-0.06, 0.06);
+      const groundY = getTerrainHeight(point.x, point.z);
+      const stone = addMesh(scene, new THREE.CylinderGeometry(
+        radius * randomRange(0.86, 0.96),
+        radius,
+        height,
+        10
+      ), materials.path[Math.floor(Math.random() * materials.path.length)], [
+        stoneX,
+        groundY + 0.035,
+        stoneZ
       ], {
-        rotation: [-Math.PI / 2, 0, -Math.atan2(tangent.z, tangent.x) + Math.PI / 2]
+        rotation: [0, -Math.atan2(tangent.z, tangent.x) + Math.PI / 2 + randomRange(-0.2, 0.2), 0],
+        scale: [scaleX, 0.55, scaleZ]
+      });
+      stone.rotation.z = randomRange(-0.035, 0.035);
+      steppingStones.push({
+        x: stoneX,
+        z: stoneZ,
+        radiusX: radius * scaleX,
+        radiusZ: radius * scaleZ,
+        topY: groundY + 0.035 + height * 0.55 / 2
       });
     }
+  }
+  return steppingStones;
+}
+
+function addTubeEndCaps(scene, points, radius, material) {
+  for (const point of [points[0], points[points.length - 1]]) {
+    addMesh(scene, new THREE.SphereGeometry(radius, 10, 8), material, point.toArray());
   }
 }
 
@@ -384,13 +431,13 @@ function createBridge(scene) {
     }
   }
   for (const side of [-1, 1]) {
-    const railCurve = new THREE.CatmullRomCurve3(
-      Array.from({ length: 11 }, (_, i) => {
-        const x = -span / 2 + (span * i) / 10;
-        return new THREE.Vector3(centerX + x, deckY(x) + 0.87, centerZ + side * 0.83);
-      })
-    );
+    const railPoints = Array.from({ length: 11 }, (_, i) => {
+      const x = -span / 2 + (span * i) / 10;
+      return new THREE.Vector3(centerX + x, deckY(x) + 0.87, centerZ + side * 0.83);
+    });
+    const railCurve = new THREE.CatmullRomCurve3(railPoints);
     addMesh(scene, new THREE.TubeGeometry(railCurve, 48, 0.075, 8, false), materials.woodLight, [0, 0, 0]);
+    addTubeEndCaps(scene, railPoints, 0.075, materials.woodLight);
     for (let i = 0; i <= 24; i += 1) {
       const x = -span / 2 + (span * i) / 24;
       const y = deckY(x);
@@ -399,13 +446,13 @@ function createBridge(scene) {
       ]);
     }
   }
-  const stringerCurve = new THREE.CatmullRomCurve3(
-    Array.from({ length: 13 }, (_, i) => {
-      const x = -span / 2 + (span * i) / 12;
-      return new THREE.Vector3(centerX + x, deckY(x) - 0.12, centerZ);
-    })
-  );
+  const stringerPoints = Array.from({ length: 13 }, (_, i) => {
+    const x = -span / 2 + (span * i) / 12;
+    return new THREE.Vector3(centerX + x, deckY(x) - 0.12, centerZ);
+  });
+  const stringerCurve = new THREE.CatmullRomCurve3(stringerPoints);
   addMesh(scene, new THREE.TubeGeometry(stringerCurve, 52, 0.12, 8, false), materials.wood, [0, 0, 0]);
+  addTubeEndCaps(scene, stringerPoints, 0.12, materials.wood);
 }
 
 function createSakura(scene, onTreeError) {
@@ -421,8 +468,21 @@ function createSakura(scene, onTreeError) {
     positions: null,
     velocities: null,
     phases: null,
+    modes: null,
+    active: null,
+    ages: null,
+    opacities: null,
+    waterOrigins: null,
+    settledGeometry: null,
+    settledPositions: null,
+    settledOpacities: null,
+    settledCount: 0,
+    settledCapacity: 256,
     canopy: null,
-    maxPetals: 1000
+    maxPetals: 1000,
+    activeCount: 0,
+    nextSpawnIndex: 0,
+    emissionAccumulator: 0
   };
   const loader = new GLTFLoader();
   state.treeReady = new Promise((resolve) => {
@@ -463,31 +523,38 @@ function createSakura(scene, onTreeError) {
       state.positions = new Float32Array(state.maxPetals * 3);
       state.velocities = new Float32Array(state.maxPetals * 3);
       state.phases = new Float32Array(state.maxPetals);
-      for (let i = 0; i < state.maxPetals; i += 1) {
-        const index = i * 3;
-        state.positions[index] = randomRange(canopy.minX, canopy.maxX);
-        state.positions[index + 1] = randomRange(canopy.minY, canopy.maxY);
-        state.positions[index + 2] = randomRange(canopy.minZ, canopy.maxZ);
-        state.velocities[index] = randomRange(-0.16, 0.16);
-        state.velocities[index + 1] = randomRange(-0.42, -0.2);
-        state.velocities[index + 2] = randomRange(-0.13, 0.13);
-        state.phases[i] = Math.random() * Math.PI * 2;
-      }
+      state.modes = new Uint8Array(state.maxPetals);
+      state.active = new Uint8Array(state.maxPetals);
+      state.ages = new Float32Array(state.maxPetals);
+      state.opacities = new Float32Array(state.maxPetals);
+      state.waterOrigins = new Float32Array(state.maxPetals * 2);
+      state.modes.fill(PETAL_INACTIVE);
+      for (let i = 0; i < state.maxPetals; i += 1) state.phases[i] = Math.random() * Math.PI * 2;
       const geometry = new THREE.BufferGeometry();
       geometry.setAttribute('position', new THREE.BufferAttribute(state.positions, 3).setUsage(THREE.DynamicDrawUsage));
-      geometry.setDrawRange(0, 0);
+      geometry.setAttribute('aOpacity', new THREE.BufferAttribute(state.opacities, 1).setUsage(THREE.DynamicDrawUsage));
+      geometry.setDrawRange(0, state.maxPetals);
       state.petalGeometry = geometry;
-      const petals = new THREE.Points(geometry, new THREE.PointsMaterial({
-        color: '#ffb7c5',
-        size: 0.12,
-        transparent: true,
-        opacity: 0.92,
-        depthWrite: false,
-        sizeAttenuation: true,
-        map: createPetalTexture()
-      }));
+      const petalMaterial = createPetalMaterial(createPetalTexture());
+      const petals = new THREE.Points(geometry, petalMaterial);
       petals.frustumCulled = false;
       root.add(petals);
+
+      state.settledPositions = new Float32Array(state.settledCapacity * 3);
+      state.settledOpacities = new Float32Array(state.settledCapacity).fill(1);
+      state.settledGeometry = new THREE.BufferGeometry();
+      state.settledGeometry.setAttribute(
+        'position',
+        new THREE.BufferAttribute(state.settledPositions, 3).setUsage(THREE.DynamicDrawUsage)
+      );
+      state.settledGeometry.setAttribute(
+        'aOpacity',
+        new THREE.BufferAttribute(state.settledOpacities, 1).setUsage(THREE.DynamicDrawUsage)
+      );
+      state.settledGeometry.setDrawRange(0, 0);
+      const settledPetals = new THREE.Points(state.settledGeometry, petalMaterial);
+      settledPetals.frustumCulled = false;
+      root.add(settledPetals);
       resolve(true);
     }, undefined, (error) => {
       onTreeError(error);
@@ -495,6 +562,128 @@ function createSakura(scene, onTreeError) {
     });
   });
   return state;
+}
+
+function resetPetal(state, petalIndex) {
+  const index = petalIndex * 3;
+  const canopy = state.canopy;
+  const verticalPosition = randomRange(-1, 1);
+  const crownRadius = Math.sqrt(Math.max(0, 1 - verticalPosition * verticalPosition));
+  const angle = randomRange(0, Math.PI * 2);
+  const horizontalRadius = Math.sqrt(Math.random()) * crownRadius;
+  const centerY = (canopy.minY + canopy.maxY) / 2;
+  const halfHeight = (canopy.maxY - canopy.minY) / 2;
+  state.positions[index] = Math.cos(angle) * horizontalRadius * canopy.maxX;
+  state.positions[index + 1] = centerY + verticalPosition * halfHeight;
+  state.positions[index + 2] = Math.sin(angle) * horizontalRadius * canopy.maxZ;
+  state.velocities[index] = randomRange(-0.16, 0.16);
+  state.velocities[index + 1] = randomRange(-0.42, -0.2);
+  state.velocities[index + 2] = randomRange(-0.13, 0.13);
+  state.modes[petalIndex] = PETAL_FALLING;
+  state.ages[petalIndex] = 0;
+  state.opacities[petalIndex] = 1;
+  if (state.active[petalIndex] === 0) {
+    state.active[petalIndex] = 1;
+    state.activeCount += 1;
+  }
+}
+
+function deactivatePetal(state, petalIndex) {
+  if (state.active[petalIndex] === 0) return;
+  state.active[petalIndex] = 0;
+  state.modes[petalIndex] = PETAL_INACTIVE;
+  state.ages[petalIndex] = 0;
+  state.opacities[petalIndex] = 0;
+  state.activeCount = Math.max(0, state.activeCount - 1);
+}
+
+function addSettledPetal(state, x, y, z) {
+  if (state.settledCount >= state.settledCapacity) {
+    const nextCapacity = state.settledCapacity * 2;
+    const positions = new Float32Array(nextCapacity * 3);
+    positions.set(state.settledPositions);
+    const opacities = new Float32Array(nextCapacity).fill(1);
+    opacities.set(state.settledOpacities);
+    state.settledCapacity = nextCapacity;
+    state.settledPositions = positions;
+    state.settledOpacities = opacities;
+    state.settledGeometry.setAttribute(
+      'position',
+      new THREE.BufferAttribute(positions, 3).setUsage(THREE.DynamicDrawUsage)
+    );
+    state.settledGeometry.setAttribute(
+      'aOpacity',
+      new THREE.BufferAttribute(opacities, 1).setUsage(THREE.DynamicDrawUsage)
+    );
+  }
+
+  const index = state.settledCount * 3;
+  state.settledPositions[index] = x;
+  state.settledPositions[index + 1] = y;
+  state.settledPositions[index + 2] = z;
+  state.settledCount += 1;
+  state.settledGeometry.setDrawRange(0, state.settledCount);
+  state.settledGeometry.attributes.position.needsUpdate = true;
+}
+
+function recycleOrRetirePetal(state, petalIndex, targetCount) {
+  if (state.activeCount > targetCount) deactivatePetal(state, petalIndex);
+  else resetPetal(state, petalIndex);
+}
+
+function emitPetalsTowardTarget(state, targetCount, delta) {
+  if (state.activeCount >= targetCount) {
+    state.emissionAccumulator = 0;
+    return;
+  }
+
+  state.emissionAccumulator += delta * 72;
+  while (state.emissionAccumulator >= 1 && state.activeCount < targetCount) {
+    let slot = -1;
+    for (let offset = 0; offset < state.maxPetals; offset += 1) {
+      const candidate = (state.nextSpawnIndex + offset) % state.maxPetals;
+      if (state.active[candidate] === 0) {
+        slot = candidate;
+        state.nextSpawnIndex = (candidate + 1) % state.maxPetals;
+        break;
+      }
+    }
+    if (slot < 0) break;
+    resetPetal(state, slot);
+    state.emissionAccumulator -= 1;
+  }
+}
+
+function createPetalMaterial(texture) {
+  return new THREE.ShaderMaterial({
+    uniforms: { uPetalMap: { value: texture } },
+    vertexShader: `
+      attribute float aOpacity;
+      varying float vOpacity;
+
+      void main() {
+        vOpacity = aOpacity;
+        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+        gl_Position = projectionMatrix * mvPosition;
+        gl_PointSize = clamp(90.0 / max(1.0, -mvPosition.z), 1.0, 8.0);
+      }
+    `,
+    fragmentShader: `
+      uniform sampler2D uPetalMap;
+      varying float vOpacity;
+
+      void main() {
+        vec4 petal = texture2D(uPetalMap, gl_PointCoord);
+        float alpha = petal.a * vOpacity * 0.92;
+        if (alpha < 0.01) discard;
+        gl_FragColor = vec4(vec3(1.0, 0.72, 0.79) * petal.rgb, alpha);
+        #include <tonemapping_fragment>
+        #include <colorspace_fragment>
+      }
+    `,
+    transparent: true,
+    depthWrite: false
+  });
 }
 
 function createPetalTexture() {
@@ -887,7 +1076,7 @@ export function createZenGarden(scene, waterMaterial, onTreeError = (error) => c
 
   const terrain = createTerrain(island);
   createMountains(scene);
-  createPath(island);
+  const steppingStones = createPath(island);
   createTorii(island);
   createPagoda(island);
   createBridge(island);
@@ -904,6 +1093,8 @@ export function createZenGarden(scene, waterMaterial, onTreeError = (error) => c
   const sakura = createSakura(island, onTreeError);
   const pondWidth = POND_BOUNDS.right - POND_BOUNDS.left;
   const pondDepth = POND_BOUNDS.far - POND_BOUNDS.near;
+  const pondCenterX = (POND_BOUNDS.left + POND_BOUNDS.right) / 2;
+  const pondCenterZ = (POND_BOUNDS.near + POND_BOUNDS.far) / 2;
   const waterGeometry = new THREE.PlaneGeometry(pondWidth, pondDepth);
   const reflection = new Reflector(waterGeometry, {
     clipBias: 0.003,
@@ -928,7 +1119,6 @@ export function createZenGarden(scene, waterMaterial, onTreeError = (error) => c
   );
   water.receiveShadow = true;
   water.renderOrder = 1;
-  waterMaterial.uniforms.uRippleScale.value.set(pondWidth, pondDepth);
   island.add(water);
   return {
     ...sakura,
@@ -936,31 +1126,145 @@ export function createZenGarden(scene, waterMaterial, onTreeError = (error) => c
     water,
     lanterns,
     treeReady: Promise.all([sakura.treeReady, bambooReady]).then(([loaded]) => loaded),
-    setRipple(u, v, time) {
-      waterMaterial.uniforms.uRipplePos.value.set(u, v);
-      waterMaterial.uniforms.uRippleTime.value = time;
+    setRipple(x, z, time, strength = 1) {
+      triggerWaterRipple(waterMaterial, x - pondCenterX, z - pondCenterZ, time, strength);
+    },
+    disperseFloatingPetals(x, z, radius = 3.2, impulse = 2.8) {
+      for (let i = 0; i < sakura.maxPetals; i += 1) {
+        if (sakura.modes[i] !== 2) continue;
+        const index = i * 3;
+        const petalX = sakura.root.position.x + sakura.positions[index];
+        const petalZ = sakura.root.position.z + sakura.positions[index + 2];
+        const dx = petalX - x;
+        const dz = petalZ - z;
+        const distance = Math.hypot(dx, dz);
+        if (distance >= radius) continue;
+        const falloff = 1 - distance / radius;
+        const directionX = distance > 1e-4 ? dx / distance : Math.cos(sakura.phases[i]);
+        const directionZ = distance > 1e-4 ? dz / distance : Math.sin(sakura.phases[i]);
+        sakura.velocities[index] += directionX * impulse * falloff;
+        sakura.velocities[index + 2] += directionZ * impulse * falloff;
+      }
+    },
+    clearPetals() {
+      if (!sakura.petalGeometry) return;
+      for (let i = 0; i < sakura.maxPetals; i += 1) deactivatePetal(sakura, i);
+      sakura.emissionAccumulator = 0;
+      sakura.settledCount = 0;
+      sakura.settledGeometry.setDrawRange(0, 0);
+      sakura.petalGeometry.attributes.position.needsUpdate = true;
+      sakura.petalGeometry.attributes.aOpacity.needsUpdate = true;
     },
     update(time, delta, windSpeed, petalDensity) {
       if (sakura.petalGeometry) {
-        const activePetals = Math.min(sakura.maxPetals, Math.floor(petalDensity));
-        sakura.petalGeometry.setDrawRange(0, activePetals);
-        for (let i = 0; i < activePetals; i += 1) {
+        const targetPetals = THREE.MathUtils.clamp(Math.floor(petalDensity), 0, sakura.maxPetals);
+        emitPetalsTowardTarget(sakura, targetPetals, delta);
+        const windX = (0.08 + Math.sin(time * 0.31) * 0.12) * windSpeed;
+        const windZ = (0.035 + Math.cos(time * 0.24) * 0.09) * windSpeed;
+        const waterLevel = POND_BOUNDS.surface + 0.006;
+        for (let i = 0; i < sakura.maxPetals; i += 1) {
+          if (sakura.active[i] === 0) continue;
           const index = i * 3;
-          const wind = Math.sin(time + sakura.phases[i]);
-          sakura.positions[index] += (sakura.velocities[index] + wind * 0.16) * delta * windSpeed;
-          sakura.positions[index + 1] += sakura.velocities[index + 1] * delta;
-          sakura.positions[index + 2] += (sakura.velocities[index + 2] + Math.cos(time * 0.8 + sakura.phases[i]) * 0.08) * delta * windSpeed;
+          const phase = sakura.phases[i];
+          const mode = sakura.modes[i];
 
-          const worldX = sakura.root.position.x + sakura.positions[index];
-          const worldZ = sakura.root.position.z + sakura.positions[index + 2];
-          const groundY = isOverPond(worldX, worldZ) ? POND_BOUNDS.surface : getTerrainHeight(worldX, worldZ);
-          if (sakura.root.position.y + sakura.positions[index + 1] <= groundY + 0.025) {
-            sakura.positions[index] = randomRange(sakura.canopy.minX, sakura.canopy.maxX);
-            sakura.positions[index + 1] = randomRange(sakura.canopy.minY, sakura.canopy.maxY);
-            sakura.positions[index + 2] = randomRange(sakura.canopy.minZ, sakura.canopy.maxZ);
+          if (mode === PETAL_FALLING) {
+            sakura.positions[index] += (
+              sakura.velocities[index] + windX + Math.sin(time * 0.7 + phase) * 0.035 * windSpeed
+            ) * delta * windSpeed;
+            sakura.positions[index + 1] += sakura.velocities[index + 1] * delta;
+            sakura.positions[index + 2] += (
+              sakura.velocities[index + 2] + windZ + Math.cos(time * 0.55 + phase) * 0.025 * windSpeed
+            ) * delta * windSpeed;
+            sakura.ages[i] += delta;
+
+            const x = sakura.root.position.x + sakura.positions[index];
+            const z = sakura.root.position.z + sakura.positions[index + 2];
+            const onBridge = Math.abs(x) <= BRIDGE_SPAN / 2 &&
+              Math.abs(z - BRIDGE_CENTER_Z) <= BRIDGE_HALF_WIDTH;
+            const steppingStone = onBridge ? null : steppingStones.find((stone) =>
+              ((x - stone.x) / stone.radiusX) ** 2 + ((z - stone.z) / stone.radiusZ) ** 2 <= 1
+            );
+            const bridgeTop = getTerrainHeight(x, BRIDGE_CENTER_Z) + 0.13 +
+              0.48 * (1 - Math.pow(x / (BRIDGE_SPAN / 2), 2));
+            const overPond = isOverPond(x, z) && !onBridge && !steppingStone;
+            let landingY = getTerrainHeight(x, z);
+            if (onBridge) {
+              landingY = bridgeTop;
+            } else if (steppingStone) {
+              landingY = steppingStone.topY;
+            } else if (overPond) {
+              landingY = waterLevel;
+            }
+            const absoluteY = sakura.root.position.y + sakura.positions[index + 1];
+
+            if (absoluteY <= landingY + 0.015) {
+              if (overPond) {
+                sakura.positions[index + 1] = waterLevel - sakura.root.position.y;
+                sakura.modes[i] = PETAL_FLOATING;
+                sakura.ages[i] = 0;
+                sakura.waterOrigins[i * 2] = sakura.positions[index];
+                sakura.waterOrigins[i * 2 + 1] = sakura.positions[index + 2];
+                triggerWaterRipple(
+                  waterMaterial,
+                  x - pondCenterX,
+                  z - pondCenterZ,
+                  time,
+                  0.035
+                );
+              } else {
+                addSettledPetal(
+                  sakura,
+                  sakura.positions[index],
+                  landingY + 0.02 - sakura.root.position.y,
+                  sakura.positions[index + 2]
+                );
+                deactivatePetal(sakura, i);
+              }
+            } else if (sakura.ages[i] >= 30) {
+              recycleOrRetirePetal(sakura, i, targetPetals);
+            }
+          } else {
+            sakura.ages[i] += delta;
+            if (mode === PETAL_FLOATING) {
+              const age = sakura.ages[i];
+              sakura.positions[index] += (
+                sakura.velocities[index] * 0.42 + Math.sin(time * 0.72 + phase) * 0.018
+              ) * delta;
+              sakura.positions[index + 2] += (
+                sakura.velocities[index + 2] * 0.42 + Math.cos(time * 0.58 + phase) * 0.014
+              ) * delta;
+              const floatX = THREE.MathUtils.clamp(
+                sakura.root.position.x + sakura.positions[index],
+                POND_BOUNDS.left + 0.08,
+                POND_BOUNDS.right - 0.08
+              );
+              const floatZ = THREE.MathUtils.clamp(
+                sakura.root.position.z + sakura.positions[index + 2],
+                POND_BOUNDS.near + 0.08,
+                POND_BOUNDS.far - 0.08
+              );
+              sakura.positions[index] = floatX - sakura.root.position.x;
+              sakura.positions[index + 2] = floatZ - sakura.root.position.z;
+              const waterDamping = Math.exp(-1.35 * delta);
+              sakura.velocities[index] *= waterDamping;
+              sakura.velocities[index + 2] *= waterDamping;
+              sakura.positions[index + 1] = waterLevel - sakura.root.position.y +
+                Math.sin(time * 1.4 + phase) * 0.012;
+
+              const fadeStart = 90;
+              const lifetime = 120;
+              sakura.opacities[i] = THREE.MathUtils.clamp(
+                1 - (age - fadeStart) / (lifetime - fadeStart),
+                0,
+                1
+              );
+              if (age >= lifetime) recycleOrRetirePetal(sakura, i, targetPetals);
+            }
           }
         }
         sakura.petalGeometry.attributes.position.needsUpdate = true;
+        sakura.petalGeometry.attributes.aOpacity.needsUpdate = true;
       }
       if (sakura.treeVisual) {
         sakura.treeVisual.rotation.z = Math.sin(time * 0.55 * windSpeed) * 0.012 * windSpeed;
