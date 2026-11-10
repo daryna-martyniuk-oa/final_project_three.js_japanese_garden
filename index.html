@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#201b25" />
+    <title>Shizuka — Garden at First Light</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=Playfair+Display:wght@500;600&display=swap" rel="stylesheet" />
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: "DM Sans", sans-serif;
+        font-synthesis: none;
+        text-rendering: optimizeLegibility;
+        -webkit-font-smoothing: antialiased;
+        --ink: #fff8f0;
+        --muted: rgba(255, 248, 240, 0.7);
+        --glass: rgba(32, 27, 37, 0.36);
+        --line: rgba(255, 248, 240, 0.2);
+      }
+
+      * { box-sizing: border-box; }
+      html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; background: #d7a58d; }
+      body { color: var(--ink); }
+      canvas { display: block; width: 100%; height: 100%; }
+      .scene-shell { position: fixed; inset: 0; }
+      .topbar {
+        position: absolute;
+        inset: 22px 26px auto;
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        pointer-events: none;
+      }
+      .brand, .scene-note {
+        padding: 14px 18px;
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        background: var(--glass);
+        box-shadow: 0 12px 36px rgba(34, 24, 28, 0.12);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+      }
+      .brand { display: flex; align-items: center; gap: 12px; }
+      .brand-mark { width: 28px; height: 28px; border: 1px solid rgba(255, 231, 210, 0.72); border-radius: 50%; display: grid; place-items: center; color: #ffe4cd; font-family: "Playfair Display", serif; font-size: 19px; }
+      .brand-name { font-family: "Playfair Display", serif; font-size: 17px; letter-spacing: 0.04em; }
+      .brand-caption { margin-top: 2px; color: var(--muted); font-size: 9px; letter-spacing: 0.19em; text-transform: uppercase; }
+      .scene-note { position: absolute; top: 82px; left: 0; max-width: 250px; text-align: left; color: var(--muted); font-size: 11px; line-height: 1.65; }
+      .scene-note strong { display: block; margin-bottom: 2px; color: var(--ink); font-size: 12px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase; }
+      .hint {
+        position: absolute;
+        right: 28px;
+        bottom: 25px;
+        padding: 10px 14px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        background: var(--glass);
+        color: var(--muted);
+        font-size: 11px;
+        letter-spacing: 0.03em;
+        backdrop-filter: blur(14px);
+        -webkit-backdrop-filter: blur(14px);
+        pointer-events: none;
+      }
+      .hint span { color: #ffe1c5; }
+      .loading {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        background: #c9937d;
+        color: #fff8f0;
+        font-family: "Playfair Display", serif;
+        font-size: 20px;
+        letter-spacing: 0.1em;
+        transition: opacity 700ms ease;
+        pointer-events: none;
+      }
+      .loading.is-hidden { opacity: 0; }
+      .lil-gui { --background-color: rgba(32, 27, 37, 0.78); --text-color: #fff8f0; --title-background-color: rgba(45, 37, 48, 0.92); --widget-color: rgba(250, 221, 204, 0.18); --hover-color: rgba(255, 230, 209, 0.22); --font-family: "DM Sans", sans-serif; --font-size: 11px; --input-font-size: 11px; --width: 258px; z-index: 4; }
+      @media (max-width: 640px) {
+        .topbar { inset: 12px 12px auto; }
+        .scene-note { display: none; }
+        .hint { right: 12px; bottom: 14px; font-size: 10px; }
+        .lil-gui { --width: 220px; }
+      }
+    </style>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/",
+          "lil-gui": "https://cdn.jsdelivr.net/npm/lil-gui@0.20.0/dist/lil-gui.esm.js"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <main class="scene-shell">
+      <div id="canvas-root"></div>
+      <header class="topbar">
+        <div class="brand">
+          <div class="brand-mark">静</div>
+          <div>
+            <div class="brand-name">Shizuka</div>
+            <div class="brand-caption">Garden at first light</div>
+          </div>
+        </div>
+        <div class="scene-note">
+          <strong>春の朝 · Haru no asa</strong>
+          A quiet morning in the mountain garden
+        </div>
+      </header>
+      <div class="hint"><span>Click the pond</span> to send ripples across the water</div>
+      <div id="loading" class="loading">A moment of stillness…</div>
+    </main>
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>
