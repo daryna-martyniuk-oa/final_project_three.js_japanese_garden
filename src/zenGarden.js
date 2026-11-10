@@ -3,12 +3,6 @@ import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { Reflector } from 'three/addons/objects/Reflector.js';
 import { mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { triggerWaterRipple } from './waterShader.js';
-import sakuraModelUrl from '../assets/sakura.glb?url';
-import bambooOneUrl from '../assets/bamboo1.glb?url';
-import bambooTwoUrl from '../assets/bamboo2.glb?url';
-import ashTreeUrl from '../assets/japanese_ash_tree.glb?url';
-import grassGroundUrl from '../assets/grass_ground_diff_4k.jpg?url';
-import greyLatiVeneerUrl from '../assets/grey_lati_veneer_diff_1k.jpg?url';
 import {
   createTerrainGeometry,
   createTerrainGrid,
@@ -18,12 +12,17 @@ import {
   POND_BOUNDS
 } from './terrain.js';
 
+const sakuraModelUrl = './sakura.glb';
+const bambooOneUrl = './bamboo1.glb';
+const bambooTwoUrl = './bamboo2.glb';
+const ashTreeUrl = './japanese_ash_tree.glb';
+
 const textureLoader = new THREE.TextureLoader();
 const woodTexture = textureLoader.load(
-  greyLatiVeneerUrl,
+  './grey_lati_veneer_diff_1k.jpg',
   undefined,
   undefined,
-  (error) => console.error(`Unable to load wood veneer texture ${greyLatiVeneerUrl}:`, error)
+  (error) => console.error('Unable to load wood veneer texture ./grey_lati_veneer_diff_1k.jpg:', error)
 );
 woodTexture.wrapS = THREE.RepeatWrapping;
 woodTexture.wrapT = THREE.RepeatWrapping;
@@ -166,10 +165,10 @@ function roundedStoneGeometry(width, depth, height) {
 function createTerrain(scene) {
   const terrainGrid = createTerrainGrid();
   const grassTexture = new THREE.TextureLoader().load(
-    grassGroundUrl,
+    './grass_ground_diff_4k.jpg',
     undefined,
     undefined,
-    (error) => console.error(`Unable to load grass ground texture ${grassGroundUrl}:`, error)
+    (error) => console.error('Unable to load grass ground texture ./grass_ground_diff_4k.jpg:', error)
   );
   grassTexture.wrapS = THREE.RepeatWrapping;
   grassTexture.wrapT = THREE.RepeatWrapping;
@@ -486,7 +485,7 @@ function createSakura(scene, onTreeError) {
   };
   const loader = new GLTFLoader();
   state.treeReady = new Promise((resolve) => {
-    loader.load(sakuraModelUrl, (gltf) => {
+    loader.load('./sakura.glb', (gltf) => {
       const model = gltf.scene;
       const sourceBounds = new THREE.Box3().setFromObject(model);
       const sourceSize = sourceBounds.getSize(new THREE.Vector3());
